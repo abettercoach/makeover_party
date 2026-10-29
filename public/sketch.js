@@ -33,3 +33,28 @@ function drawPos(pos) {
   fill(0);
   ellipse(pos.x, pos.y, 10, 10);
 }
+
+
+//RGB color for brush 0-255 for each channel
+function setBrushColor(r, g, b) {
+    //set locally for p5
+    //send via socket to serve
+}
+
+function setBrushSize(size) {
+  
+}
+
+function setBrushOpacity(opacity) {
+
+}
+
+//Type of brush is a string eg. "hard", "soft", "eraser"
+function setBrushType(type) {
+
+}
+
+function clearCanvas() {
+
+}
+//

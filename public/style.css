@@ -2,3 +2,46 @@ body {
     background-color: white;
     font-family: Arial, Helvetica, sans-serif;
 }
+
+h3 {
+    text-align: center;
+}
+.flex-container {
+    display: flex;
+    flex-direction: row;
+    justify-content: space-between;
+    gap: 2em; 
+    width: 60%;
+    margin-left: auto;
+    margin-right: auto;
+}
+
+.canvas {
+    padding: 20px;
+}
+
+#colorPalette {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr); /* gemini + MD ref */
+    grid-template-rows: repeat(6, auto); /* gemini + MD ref */
+    gap: 1px;
+}
+
+#brushes{
+    display: flex;
+    flex-direction: column;
+    width: 3em;
+    padding-top: 10px;
+    padding-bottom: 10px;
+}
+
+.color-btn {
+    width: 2em;
+    height: 2em;
+}
+
+.slider {
+    writing-mode: vertical-lr;
+    direction: rtl;
+    margin-top: 20px;
+}

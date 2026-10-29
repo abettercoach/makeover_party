@@ -1,18 +1,60 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <script src="app.js"></script>
     <link href="style.css" rel="stylesheet">
     </link>
-    <title>Drawing with Socekts and p5</title>
+    <title>Makeup Party</title>
 </head>
 
 <body>
+    <h3 id="room-status">you are the <span id="roomT">HOST</span>, Room Code:</h3>
+    <div class="flex-container">
+         <!-- COL1 : clear canvas and sliders column -->
+        <div class="canvas" id="left-buttons">
+            <button id="clearCanvas">clear</button>
+           
+            <!-- sliders -->
+            <div class="slidecontainer">
+                <input type="range" min="1" max="100" value="50" class="slider" id="sizeSlider">
+            </div>
+            <div class="slidecontainer">
+                <input type="range" min="1" max="100" value="50" class="slider" id="opacitySlider">
+            </div>
+        </div>
+        <!-- COL 2: p5 Canvas -->
+        <div class="canvas" id="p5Canvas">
+            <!-- p5 Canvas goes in here -->
+        </div>
+        <!-- COL 3: Color Palette / Brushes -->
+            <!-- colour palette / brushes column -->
+        <div class="canvas" id="right-buttons">
+            <div id="colorPalette">
+                <button class="color-btn" style="background-color: #00ff00;" data-color="#00ff00"></button>
+                <button class="color-btn" style="background-color: #0000ff;" data-color="#0000ff"></button>
+                <button class="color-btn" style="background-color: #ffff00;" data-color="#ffff00"></button>
+                <button class="color-btn" style="background-color: #ff00ff;" data-color="#ff00ff"></button>
+                <button class="color-btn" style="background-color: #00ffff;" data-color="#00ffff"></button>
+                <button class="color-btn" style="background-color: #ffa500;" data-color="#ffa500"></button>
+                <button class="color-btn" style="background-color:grey">+</button>
+            </div>
+            
+            <div id="brushes">
+            <button id="softB">soft brush</button>
+            <button id="hardB">hard brush</button>
+            <button id="eraseB">erase</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Script links  -->
     <script type="text/javascript" src="/socket.io/socket.io.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.1.9/p5.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.1.9/addons/p5.sound.min.js"></script>
     <script src="sketch.js"></script>
 </body>
+
 </html>
