@@ -19,9 +19,11 @@ let capture;
 
 // UI Button Functionality
 let UI = {};
-let tool = {type: "brush", size: 10, color: {r: 0, g: 0, b: 0}}; //Default tool + options
+let tool = { type: "brush", size: 10, color: { r: 0, g: 0, b: 0 }, opacity: 255 }; //Default tool + options
 
-/* #endregion */ 
+let pg; //added graphics layer for erase tool 
+
+/* #endregion */
 
 /* #region Setup Functions */
 /* Initialize p5 canvas and sets up event listeners */
@@ -40,6 +42,8 @@ function setupCanvas() {
 
   let canvas = createCanvas(w, h);
   canvas.parent('p5Canvas');
+
+  pg = createGraphics(w, h);
 }
 
 function setupVideo() {
@@ -88,7 +92,7 @@ function setupUI() {
   if (UI.hardBrushButton) {
     UI.hardBrushButton.mousePressed(() => setToolType("hard"));
   }
-  
+
   UI.eraserButton = select('#eraseB');
   if (UI.eraserButton) {
     UI.eraserButton.mousePressed(() => setToolType("eraser"));
@@ -114,15 +118,15 @@ function setupSocket() {
 //Type of brush is a string eg. "hard", "soft", "eraser"
 function setToolType(type) {
   tool.type = type;
-  if (type == "soft"){
+  if (type == "soft") {
     tool.softness = 0.5; // Example value for soft brush
   }
 
-  if (type == "hard"){
+  if (type == "hard") {
     tool.softness = 0; // Example value for hard brush
   }
 
-  if (type == "eraser"){
+  if (type == "eraser") {
     tool.softness = 1; // Example value for eraser
   }
 }
@@ -130,7 +134,7 @@ function setToolType(type) {
 //RGB color for brush 0-255 for each channel
 function setBrushColor(r, g, b) {
   //set locally for p5
-  tool.color = {r, g, b};
+  tool.color = { r, g, b };
   //send via socket to server
   // socket.emit('data', { r, g, b });
 }
@@ -140,7 +144,8 @@ function setBrushSize(size) {
 }
 
 function setBrushOpacity(opacity) {
-  tool.opacity = opacity;
+  tool.opacity = map(opacity, 0, 100, 0, 255);
+
 }
 
 function clearCanvas() {
@@ -152,13 +157,35 @@ function clearCanvas() {
 function draw() {
   background(220);
   image(capture, 0, 0);
+  pg.clear();
 
-  // CHANGED: Replaced the single circle check with a loop that renders every circle in the array
+  // GEMINI CHANGED: Replaced the single circle check with a loop that renders every circle in the array
   for (let c of circles) {
-    fill(c.r, c.g, c.b);
-    noStroke();
-    circle(c.x, c.y, c.size);
+    // fill(c.r, c.g, c.b, c.opacity);
+    // noStroke();
+    // circle(c.x, c.y, c.size);
+
+    // change depending on brushes
+    if (c.type == "hard") {
+      pg.fill(c.r, c.g, c.b, c.opacity);
+      pg.noStroke();
+      pg.circle(c.x, c.y, c.size);
+    } else if (c.type == "soft") {
+      pg.drawingContext.filter = `blur(${c.size * 0.3}px)`; // GEMINI help adding gaussian blur
+      pg.fill(c.r, c.g, c.b, c.opacity);
+      pg.noStroke();
+      pg.circle(c.x, c.y, c.size);
+      pg.drawingContext.filter = 'none'; // GEMINI help adding gaussian blur
+    } else if (c.type == "eraser") {
+      pg.erase();
+      pg.noStroke();
+      pg.circle(c.x, c.y, c.size);
+      pg.noErase(); // GEMINI: ALWAYS call noErase() immediately after so subsequent shapes draw normally 
+    }
   }
+
+  image(pg, 0, 0);
+  // guidance with Gemini to add graphics layer
 }
 
 function mousePressed() {
@@ -168,6 +195,8 @@ function mousePressed() {
   g = tool.color.g;
   b = tool.color.b;
   size = tool.size;
+  opacity = tool.opacity;
+  type = tool.type;
 
   xpos = mouseX;
   ypos = mouseY;
@@ -179,7 +208,9 @@ function mousePressed() {
     r: r,
     g: g,
     b: b,
-    size: size
+    size: size,
+    opacity: opacity,
+    type: type,
   });
 }
 
