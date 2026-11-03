@@ -224,5 +224,32 @@ function mouseMoved() {
   // fill(0);
   // ellipse(mouseX, mouseY 10, 10);
 }
+
+function mouseDragged() {
+  //repeat mousePressed functions
+  d = true;
+
+  r = tool.color.r;
+  g = tool.color.g;
+  b = tool.color.b;
+  size = tool.size;
+  opacity = tool.opacity;
+  type = tool.type;
+
+  xpos = mouseX;
+  ypos = mouseY;
+
+  // ADDED: Pushes the newly created properties into the circles array each time you click
+  circles.push({
+    x: xpos,
+    y: ypos,
+    r: r,
+    g: g,
+    b: b,
+    size: size,
+    opacity: opacity,
+    type: type,
+});
+}
 /* #endregion */
 
