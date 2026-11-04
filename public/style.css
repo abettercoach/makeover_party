@@ -92,4 +92,8 @@ input[type="range"] {
     border-color: #e085c2;
 }
 
+#p5Canvas canvas {
+    max-width: 100%;
+    height: auto;
+}
 

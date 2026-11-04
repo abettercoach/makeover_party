@@ -223,9 +223,10 @@ function setupUIBindings() {
 }
 
 function setupCanvas() {
-  // Initialize p5 canvas
-  let w = windowWidth * 0.5;
-  let h = windowHeight * 0.7;
+  // Initialize p5 canvas to the same size regardless of display resolution
+  // Responsive in CSS, but fixed size in p5 canvas for consistent drawing coordinates
+  let w = 640;
+  let h = 480;
 
   let canvas = createCanvas(w, h);
   canvas.parent('p5Canvas');
@@ -237,9 +238,23 @@ function setupCanvas() {
 function draw() {
   // Clear to draw the current video frame, then overlay the drawing layer
   background(220);
-  if (mainVideo) // Only draw the video if it exists (since it takes time to setup)
-    image(mainVideo, 0, 0);
+  displayVideo();
   image(pg, 0, 0);
+}
+
+function displayVideo() {
+  // Scale video to fit canvas while maintaining aspect ratio
+  let scaleFactor = min(640 / mainVideo.width, 480 / mainVideo.height);
+  
+  let w = mainVideo.width * scaleFactor;
+  let h = mainVideo.height * scaleFactor;
+
+  let left = (640 - w) / 2;
+  let top = (480 - h) / 2;
+
+  if (mainVideo) {
+    image(mainVideo, left, top, w, h);
+  }
 }
 
 function mouseDragged() {
