@@ -17,7 +17,7 @@ let tool = { brush: "hard", size: 10, color: { r: 0, g: 0, b: 0, a: 255 }}; //De
 
 // Stroke data for socket communication
 let currentStroke = null;
-let remoteStrokes = [];
+let strokes = {};
 
 /* Setup Functions */
 /* Initialize Socket.io, WebRTC, p5 canvas, and UI bindings */
@@ -186,10 +186,10 @@ function setupUISignaling() {
     data.forEach(stroke => strokeHandlers[stroke.type]?.(stroke))
   );
 
-  socket.on('strokeStart', strokeStart);
-  socket.on('strokePoint', strokePoint);
-  socket.on('strokeEnd', strokeEnd);
-  socket.on('clearCanvas', clearCanvas);
+  socket.on('strokeStart', applyStrokeStart);
+  socket.on('strokePoint', applyStrokePoint);
+  socket.on('strokeEnd', applyStrokeEnd);
+  socket.on('clearCanvas', applyClearCanvas);
 }
 
 function setupUIBindings() {
@@ -204,10 +204,7 @@ function setupUIBindings() {
     if (element) element[event](() => handler(element));
   };
 
-  bind('#clearCanvas', 'mousePressed', () => {
-    clearCanvas(); // Apply locally
-    socket.emit('clearCanvas'); // Apply remotely
-  });
+  bind('#clearCanvas', 'mousePressed', clearCanvas);
 
   bind('#sizeSlider', 'input', el => { tool.size = el.value(); });
   bind('#opacitySlider', 'input', el => { tool.color.a = map(el.value(), 0, 100, 0, 255); });
@@ -260,35 +257,66 @@ function displayVideo() {
   }
 }
 
-function mouseDragged() {
-  if (!currentStroke) {
-    let strokeData = { id: `${socket.id}-${Date.now()}`, ...tool };
-    strokeStart(strokeData); // Apply locally
-    socket.emit('strokeStart', strokeData); // Apply remotely
-  }
+function mousePressed() {
+  if (!currentStroke) strokeStart();
 
-  let pointData = { id: currentStroke.id, point: { x: mouseX, y: mouseY } };
-  strokePoint(pointData); // Apply locally
-  socket.emit('strokePoint', pointData); // Apply remotely
+  strokePoint();
+}
+
+function mouseDragged() {
+  if (!currentStroke) return;
+
+  strokePoint();
 }
 
 function mouseReleased() {
-  strokeEnd(currentStroke); // Apply locally
-  socket.emit('strokeEnd', currentStroke); // Apply remotely
+  if (!currentStroke) return;
+
+  strokeEnd();
 }
 
 /* Data Handling Functions for Strokes and Canvas */
-/* Used to handle both local and remote stroke data for uniformity*/
 
-function strokeStart(data) {
-  if (!currentStroke) currentStroke = data ;
+function strokeStart() {
+  currentStroke = { id: `${socket.id}-${Date.now()}`, ...tool, points: [] };
+
+  applyStrokeStart(currentStroke); // Apply locally
+  socket.emit('strokeStart', currentStroke); // Apply remotely
 }
 
-function strokePoint(data) {
+function strokePoint() {
+  let currentPoint = { id: currentStroke.id, point: { x: mouseX, y: mouseY } };
+
+  applyStrokePoint(currentPoint); // Apply locally
+  socket.emit('strokePoint', currentPoint); // Apply remotely
+}
+
+function strokeEnd() {
+  applyStrokeEnd(currentStroke); // Apply locally
+  socket.emit('strokeEnd', currentStroke); // Apply remotely
+  currentStroke = null;
+}
+
+function clearCanvas() {
+  applyClearCanvas(); // Apply locally
+  socket.emit('clearCanvas'); // Apply remotely
+}
+
+
+/* Stroke Application Functions for both locally and remotely initiated strokes */
+
+function applyStrokeStart(data) {
+  strokes[data.id] = data;
+}
+
+function applyStrokePoint(data) {
   const { x, y } = data.point;
   // Only update the drawing layer after MouseDragged interactions
-  if (!currentStroke) return;
-  let s = currentStroke;
+  if (!strokes[data.id]) return;
+  let s = strokes[data.id];
+
+  if (!s.points) s.points = [];
+  s.points.push({ x, y });
 
   /*  TODO: Interpolate points between previous and current mouse positions for smoother brush strokes
 
@@ -308,32 +336,33 @@ function strokePoint(data) {
       - Add temporary stroke layer for uniform opacity blending and smoother rendering of soft brushes.
     */
 
-  if (currentStroke.brush == "hard") {
+  if (s.brush == "hard") {
     pg.fill(s.color.r, s.color.g, s.color.b, s.color.a);
     pg.noStroke();
-    pg.circle(x, y, currentStroke.size);
+    pg.circle(x, y, s.size);
   }
-  else if (currentStroke.brush == "soft") {
-    pg.drawingContext.filter = `blur(${currentStroke.size * 0.3}px)`; // (Tiff) GEMINI help adding gaussian blur
+  else if (s.brush == "soft") {
+    pg.drawingContext.filter = `blur(${s.size * 0.3}px)`; // (Tiff) GEMINI help adding gaussian blur
     pg.fill(s.color.r, s.color.g, s.color.b, s.color.a);
     pg.noStroke();
-    pg.circle(x, y, currentStroke.size);
+    pg.circle(x, y, s.size);
     pg.drawingContext.filter = 'none';
   }
-  else if (currentStroke.brush == "eraser") {
+  else if (s.brush == "eraser") {
     pg.erase();
     pg.noStroke();
-    pg.circle(x, y, currentStroke.size);
+    pg.circle(x, y, s.size);
     pg.noErase(); // (Tiff) GEMINI: ALWAYS call noErase() immediately after so subsequent shapes draw normally 
   }
 }
 
-function strokeEnd(data) {
-  if (currentStroke) {
-    currentStroke = null;
+
+function applyStrokeEnd(data) {
+  if (strokes[data.id]) {
+    delete strokes[data.id];
   }
 }
 
-function clearCanvas() {
+function applyClearCanvas() {
   pg.clear();
 }
