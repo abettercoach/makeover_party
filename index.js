@@ -19,33 +19,32 @@ io = new io.Server(server);
 let strokes = []; // Store all strokes received from clients
 
 //Listen for individual clients/users to connect
-io.sockets.on('connection', function(socket) {
+io.sockets.on('connection', socket => {
     console.log("We have a new client: " + socket.id);
     
     socket.emit('initCanvas', strokes); // Send all previous strokes to the newly connected client
 
-    socket.on('strokeStart', function(data) {
+    socket.on('strokeStart', data => {
         strokes.push({ type: "start", ...data }); // Store the received stroke start data
         socket.broadcast.emit('strokeStart', data); // Broadcast to all clients except the sender
     });
 
-    socket.on('strokePoint', function(data) {
-        strokes.push({ type: "point", ...data }); // Store the received stroke point data
-        socket.broadcast.emit('strokePoint', data); // Broadcast to all clients except the sender
+    socket.on('strokePoint', data => {
+        strokes.push({ type: "point", ...data }); 
+        socket.broadcast.emit('strokePoint', data); 
     });
 
-    socket.on('strokeEnd', function(data) {
-        strokes.push({ type: "end", ...data }); // Store the received stroke end data
-        socket.broadcast.emit('strokeEnd', data); // Broadcast to all clients except the sender
+    socket.on('strokeEnd', data => {
+        strokes.push({ type: "end", ...data }); 
+        socket.broadcast.emit('strokeEnd', data); 
     });
-    
-    socket.on('clearCanvas', function() {
+
+    socket.on('clearCanvas', () => {
         strokes = [];
         socket.broadcast.emit('clearCanvas');
     });
 
-    //Listen for this client to disconnect
-    socket.on('disconnect', function() {
+    socket.on('disconnect', () => {
         console.log("A client has disconnected: " + socket.id);
     });
 });
