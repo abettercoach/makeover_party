@@ -15,24 +15,33 @@ server.listen(port, () => {
 let io = require('socket.io');
 io = new io.Server(server);
 
+// Data
+let strokes = []; // Store all strokes received from clients
+
 //Listen for individual clients/users to connect
 io.sockets.on('connection', function(socket) {
     console.log("We have a new client: " + socket.id);
+    
+    socket.emit('initCanvas', strokes); // Send all previous strokes to the newly connected client
 
-    //Listen for a message named 'data' from this client
-    socket.on('data', function(data) {
-        //Data can be numbers, strings, objects
-        console.log("Received: 'data' " + data);
+    socket.on('strokeStart', function(data) {
+        strokes.push({ type: "start", ...data }); // Store the received stroke start data
+        socket.broadcast.emit('strokeStart', data); // Broadcast to all clients except the sender
+    });
 
-        //Send the data to all clients, including this one
-        //Set the name of the message to be 'data'
-        io.sockets.emit('data', data);
+    socket.on('strokePoint', function(data) {
+        strokes.push({ type: "point", ...data }); // Store the received stroke point data
+        socket.broadcast.emit('strokePoint', data); // Broadcast to all clients except the sender
+    });
 
-        //Send the data to all other clients, not including this one
-        // socket.broadcast.emit('data', data);
-
-        //Send the data to just this client
-        // socket.emit('data', data);
+    socket.on('strokeEnd', function(data) {
+        strokes.push({ type: "end", ...data }); // Store the received stroke end data
+        socket.broadcast.emit('strokeEnd', data); // Broadcast to all clients except the sender
+    });
+    
+    socket.on('clearCanvas', function() {
+        strokes = [];
+        socket.broadcast.emit('clearCanvas');
     });
 
     //Listen for this client to disconnect

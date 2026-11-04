@@ -1,31 +1,19 @@
-/* #region Imports */
-
 /* Import and connect socket.io */
 let socket = io();
 
-/* #endregion */
+/* Data */
 
-/* #region Data */
-// Mouse Position, drawing state, and tool settings
-let xpos;
-let ypos;
-let d = false;
-
-// ADDED: Array to store multiple circle objects
-let circles = [];
-
-// Video capture object for p5
-let capture;
+let pg;  // p5 Graphics Buffer (for erasing)
+let capture; // p5 Video capture object
 
 // UI Button Functionality
-let UI = {};
-let tool = { type: "brush", size: 10, color: { r: 0, g: 0, b: 0 }, opacity: 255 }; //Default tool + options
+let tool = { brush: "hard", size: 10, color: { r: 0, g: 0, b: 0, a: 255 }}; //Default tool + options
 
-let pg; //added graphics layer for erase tool 
+// Stroke data for socket communication
+let currentStroke = null;
+let remoteStrokes = [];
 
-/* #endregion */
-
-/* #region Setup Functions */
+/* Setup Functions */
 /* Initialize p5 canvas and sets up event listeners */
 
 function setup() {
@@ -53,203 +41,113 @@ function setupVideo() {
 }
 
 function setupUI() {
-  // Clear
-  UI.clearButton = select('#clearCanvas');
-  if (UI.clearButton) {
-    UI.clearButton.mousePressed(clearCanvas);
-  }
+  // Select an element and attach a handler (which receives the element), skipping missing elements
+  // LLM Usage (Iris): Used Copilot for this `bind` helper function to simplify event binding for UI elements. 
+  // Removed a lot of duplicated code. Refer to previous commits for example of more complex code for the same functionality.
+  const bind = (selector, event, handler) => {
+    const element = select(selector);
+    if (element) element[event](() => handler(element));
+  };
 
-  // Sliders
-  UI.sizeSlider = select('#sizeSlider');
-  if (UI.sizeSlider) {
-    UI.sizeSlider.input(() => setBrushSize(UI.sizeSlider.value()));
-  }
+  bind('#clearCanvas', 'mousePressed', () => {
+    clearCanvas();
+    socket.emit('clearCanvas');
+  });
+  
+  bind('#sizeSlider', 'input', el => { tool.size = el.value(); });
+  bind('#opacitySlider', 'input', el => { tool.color.a = map(el.value(), 0, 100, 0, 255); });
+  bind('#softB', 'mousePressed', () => { tool.brush = "soft"; });
+  bind('#hardB', 'mousePressed', () => { tool.brush = "hard"; });
+  bind('#eraseB', 'mousePressed', () => { tool.brush = "eraser"; });
 
-  UI.opacitySlider = select('#opacitySlider');
-  if (UI.opacitySlider) {
-    UI.opacitySlider.input(() => setBrushOpacity(UI.opacitySlider.value()));
-  }
-
-  // Colors
-  UI.colorPalette = select('#colorPalette');
-  if (UI.colorPalette) {
-    //LLM Usage (Iris): Used Copilot for this `selectAll` formulation to match Tiff's HTML structure
-    selectAll('#colorPalette .color-btn[data-color]').forEach(button => {
-      button.mousePressed(() => {
-        const c = color(button.attribute('data-color')); // Build a p5 color object from the hex color string
-        setBrushColor(red(c), green(c), blue(c)); // Set the brush color using the extracted RGB values
-      });
+  //LLM Usage (Iris): Used Copilot for this `selectAll` formulation to match Tiff's HTML structure
+  selectAll('#colorPalette .color-btn[data-color]').forEach(button => {
+    button.mousePressed(() => {
+      const c = color(button.attribute('data-color')); // Build a p5 color object from the hex color string
+      tool.color = { r: red(c), g: green(c), b: blue(c), a: tool.color.a }; // Extract RGB from the selected color and preserve alpha
     });
-  }
-
-  // Brushes
-  UI.softBrushButton = select('#softB');
-  if (UI.softBrushButton) {
-    UI.softBrushButton.mousePressed(() => setToolType("soft"));
-  }
-
-  UI.hardBrushButton = select('#hardB');
-  if (UI.hardBrushButton) {
-    UI.hardBrushButton.mousePressed(() => setToolType("hard"));
-  }
-
-  UI.eraserButton = select('#eraseB');
-  if (UI.eraserButton) {
-    UI.eraserButton.mousePressed(() => setToolType("eraser"));
-  }
+  });
 }
 
 function setupSocket() {
   //Listen for confirmation of connection
-  socket.on('connect', function () {
-    console.log("Connected");
-  });
+  socket.on('connect', () => console.log(`Connected: ${socket.id}`));
 
-  //Listen for messages named 'data' from the server
-  // socket.on('data', function (obj) {
-  //   console.log(obj);
-  //   drawPos(obj);
-  // });
-}
-/* #endregion */
+  // Elegant way to handle different stroke types using a lookup table
+  // eg. if ("start") strokeHandlers["start"](stroke) would be called
+  const strokeHandlers = { start: strokeStart, point: strokePoint, end: strokeEnd };
+  socket.on('initCanvas', data =>
+    data.forEach(stroke => strokeHandlers[stroke.type]?.(stroke))
+  );
 
-/* #region Tool and Brush Settings */
-
-//Type of brush is a string eg. "hard", "soft", "eraser"
-function setToolType(type) {
-  tool.type = type;
-  if (type == "soft") {
-    tool.softness = 0.5; // Example value for soft brush
-  }
-
-  if (type == "hard") {
-    tool.softness = 0; // Example value for hard brush
-  }
-
-  if (type == "eraser") {
-    tool.softness = 1; // Example value for eraser
-  }
+  socket.on('strokeStart', strokeStart);
+  socket.on('strokePoint', strokePoint);
+  socket.on('strokeEnd', strokeEnd);
+  socket.on('clearCanvas', clearCanvas);
 }
 
-//RGB color for brush 0-255 for each channel
-function setBrushColor(r, g, b) {
-  //set locally for p5
-  tool.color = { r, g, b };
-  //send via socket to server
-  // socket.emit('data', { r, g, b });
-}
-
-function setBrushSize(size) {
-  tool.size = size;
-}
-
-function setBrushOpacity(opacity) {
-  tool.opacity = map(opacity, 0, 100, 0, 255);
-
-}
-
-function clearCanvas() {
-  circles = [];
-}
-/* #endregion */
-
-/* #region Draw and Mouse Functions */
+/* p5 Draw and Mouse Functions */
 function draw() {
+  // Clear to draw the current video frame, then overlay the drawing layer
   background(220);
   image(capture, 0, 0);
-  pg.clear();
-
-  // GEMINI CHANGED: Replaced the single circle check with a loop that renders every circle in the array
-  for (let c of circles) {
-    // fill(c.r, c.g, c.b, c.opacity);
-    // noStroke();
-    // circle(c.x, c.y, c.size);
-
-    // change depending on brushes
-    if (c.type == "hard") {
-      pg.fill(c.r, c.g, c.b, c.opacity);
-      pg.noStroke();
-      pg.circle(c.x, c.y, c.size);
-    } else if (c.type == "soft") {
-      pg.drawingContext.filter = `blur(${c.size * 0.3}px)`; // GEMINI help adding gaussian blur
-      pg.fill(c.r, c.g, c.b, c.opacity);
-      pg.noStroke();
-      pg.circle(c.x, c.y, c.size);
-      pg.drawingContext.filter = 'none'; // GEMINI help adding gaussian blur
-    } else if (c.type == "eraser") {
-      pg.erase();
-      pg.noStroke();
-      pg.circle(c.x, c.y, c.size);
-      pg.noErase(); // GEMINI: ALWAYS call noErase() immediately after so subsequent shapes draw normally 
-    }
-  }
-
   image(pg, 0, 0);
-  // guidance with Gemini to add graphics layer
-}
-
-function mousePressed() {
-  d = true;
-
-  r = tool.color.r;
-  g = tool.color.g;
-  b = tool.color.b;
-  size = tool.size;
-  opacity = tool.opacity;
-  type = tool.type;
-
-  xpos = mouseX;
-  ypos = mouseY;
-
-  // ADDED: Pushes the newly created properties into the circles array each time you click
-  circles.push({
-    x: xpos,
-    y: ypos,
-    r: r,
-    g: g,
-    b: b,
-    size: size,
-    opacity: opacity,
-    type: type,
-  });
-}
-
-function mouseMoved() {
-  //Grab mouse position
-  let mousePos = { x: mouseX, y: mouseY };
-  //Send mouse position object to the server
-  socket.emit('data', mousePos);
-
-  //Draw yourself? or Wait for server?
-  // fill(0);
-  // ellipse(mouseX, mouseY 10, 10);
 }
 
 function mouseDragged() {
-  //repeat mousePressed functions
-  d = true;
+  let strokeData = { id: `${socket.id}-${Date.now()}`, ...tool };
+  strokeStart(strokeData);
+  socket.emit('strokeStart', strokeData);
 
-  r = tool.color.r;
-  g = tool.color.g;
-  b = tool.color.b;
-  size = tool.size;
-  opacity = tool.opacity;
-  type = tool.type;
-
-  xpos = mouseX;
-  ypos = mouseY;
-
-  // ADDED: Pushes the newly created properties into the circles array each time you click
-  circles.push({
-    x: xpos,
-    y: ypos,
-    r: r,
-    g: g,
-    b: b,
-    size: size,
-    opacity: opacity,
-    type: type,
-});
+  let pointData = { id: currentStroke.id, point: { x: mouseX, y: mouseY } };
+  strokePoint(pointData);
+  socket.emit('strokePoint', pointData);
 }
-/* #endregion */
 
+function mouseReleased() {
+  strokeEnd(currentStroke);
+  socket.emit('strokeEnd', currentStroke);
+}
+
+/* Data Handling Functions for Strokes and Canvas */
+/* Used to handle both local and remote stroke data for uniformity*/
+
+function strokeStart(data) {
+  if (!currentStroke) currentStroke = data ;
+}
+
+function strokePoint(data) {
+  const { x, y } = data.point;
+  // Only update the drawing layer after MouseDragged interactions
+  if (!currentStroke) return;
+  let s = currentStroke;
+
+  if (currentStroke.brush == "hard") {
+    pg.fill(s.color.r, s.color.g, s.color.b, s.color.a);
+    pg.noStroke();
+    pg.circle(x, y, currentStroke.size);
+  }
+  else if (currentStroke.brush == "soft") {
+    pg.drawingContext.filter = `blur(${currentStroke.size * 0.3}px)`; // (Tiff) GEMINI help adding gaussian blur
+    pg.fill(s.color.r, s.color.g, s.color.b, s.color.a);
+    pg.noStroke();
+    pg.circle(x, y, currentStroke.size);
+    pg.drawingContext.filter = 'none';
+  }
+  else if (currentStroke.brush == "eraser") {
+    pg.erase();
+    pg.noStroke();
+    pg.circle(x, y, currentStroke.size);
+    pg.noErase(); // (Tiff) GEMINI: ALWAYS call noErase() immediately after so subsequent shapes draw normally 
+  }
+}
+
+function strokeEnd(data) {
+  if (currentStroke) {
+    currentStroke = null;
+  }
+}
+
+function clearCanvas() {
+  pg.clear();
+}
