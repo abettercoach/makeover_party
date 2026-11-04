@@ -85,10 +85,6 @@ function setupWebRTC(socket) {
     socket.on('guestAnswer', ({to, answer}) => {
         io.to(hostSocketId).emit('guestAnswer', {from: socket.id, answer});
     });
-
-    socket.on('iceCandidate', ({to, candidate}) => {
-        io.to(to).emit('iceCandidate', {from: socket.id, candidate});
-    });
 }
 
 function setupUI(socket) {

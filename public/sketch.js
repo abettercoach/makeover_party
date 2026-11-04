@@ -6,7 +6,6 @@ let socket = io();
 
 // WebRTC and p5 video capture related variables
 let pcs = {}; // Store multiple peer connections indexed by socket ID
-let pendingCandidates = {}; // Store ICE candidates received before remote description is set
 
 let localStream; // Local media stream for WebRTC
 
@@ -21,7 +20,7 @@ let currentStroke = null;
 let remoteStrokes = [];
 
 /* Setup Functions */
-/* Initialize p5 canvas and sets up event listeners */
+/* Initialize Socket.io, WebRTC, p5 canvas, and UI bindings */
 
 function setup() {
   setupSocket();
@@ -51,18 +50,6 @@ function setupRoomSocketHandlers() {
     setHeader('GUEST, Room Code: ' + roomCode);
     becomeGuest();
   });
-
-  // Handle incoming Interactive Connectivity Establishment (ICE) candidates from remote peers (both host and guest) - WebRTC signaling
-  // (Iris) I understand everything else about WebRTC signaling, but not this part.
-  socket.on('iceCandidate', async ({from, candidate}) => {
-    const pc = pcs[from];
-    if (pc && pc.remoteDescription) {
-      await pc.addIceCandidate(candidate);
-    } else {
-      if (!pendingCandidates[from]) pendingCandidates[from] = [];
-      pendingCandidates[from].push(candidate);
-    }
-  });
 }
 
 function becomeHost() {
@@ -85,8 +72,11 @@ function becomeHost() {
     const offer = await pc.createOffer();
     await pc.setLocalDescription(offer);
 
+    // Host waits for gathering ICE candidates before sending the offer
+    await waitForIceGathering(pc);
+
     // Host sends the offer to the guest via the signaling server
-    socket.emit('hostOffer', {to: guestId, offer});
+    socket.emit('hostOffer', {to: guestId, offer: pc.localDescription});
   });
 
   // Host receives an acceptance from a guest
@@ -94,7 +84,6 @@ function becomeHost() {
     const pc = pcs[from]; //Retrieve the right pc for a given guest from persisted pcs
     if (pc) {
       await pc.setRemoteDescription(answer);
-      await flushPendingCandidates(from);
     }
   });
 }
@@ -105,14 +94,16 @@ function becomeGuest() {
     // Guest creates a new peer connection for the host and sets up event handlers
     const pc = createPeerConnection(from);
     await pc.setRemoteDescription(offer);
-    await flushPendingCandidates(from);
 
     // Guest creates an answer for the host's offer
     const answer = await pc.createAnswer();
     await pc.setLocalDescription(answer);
 
+    // Wait for gathering ICE candidates before sending the answer
+    await waitForIceGathering(pc);
+
     // Guest sends the answer back to the host via the signaling server
-    socket.emit('guestAnswer', {to: from, answer});
+    socket.emit('guestAnswer', {to: from, answer: pc.localDescription});
   });
 }
 
@@ -122,12 +113,6 @@ function createPeerConnection(remoteSocketId) {
     iceServers: [{ urls: "stun:stun.l.google.com:19302" }]
   });
 
-  pc.onicecandidate = event => {
-    if (event.candidate) {
-      socket.emit('iceCandidate', {to: remoteSocketId, candidate: event.candidate});
-    }
-  };
-
   pc.ontrack = event => {
     setupRemoteStreamFromEvent(event);
   };
@@ -136,17 +121,25 @@ function createPeerConnection(remoteSocketId) {
   return pc;
 }
 
-// WebRTC
-// Flush any pending ICE candidates for a given remote socket ID once the remote description is set
-// From Co-Pilot suggestion (Iris)
-async function flushPendingCandidates(remoteSocketId) {
-  const pc = pcs[remoteSocketId];
-  if (pc && pendingCandidates[remoteSocketId]) {
-    for (const candidate of pendingCandidates[remoteSocketId]) {
-      await pc.addIceCandidate(candidate);
+// Wait for ICE gathering to complete for a given RTCPeerConnection
+function waitForIceGathering(pc) { 
+  return new Promise((resolve, reject) => {
+    // Resolves immediately if iceGatheringState is already 'complete'
+    if (pc.iceGatheringState === 'complete') {
+      resolve();
+      return;
     }
-    delete pendingCandidates[remoteSocketId];
-  }
+
+    //TODO: Reject with an error if ICE gathering fails or takes too long
+
+    // Otherwise attaches a listener and resolves when complete
+    pc.onicegatheringstatechange = () => {
+      if (pc.iceGatheringState === 'complete') {
+        pc.onicegatheringstatechange = null;
+        resolve();
+      }
+    };
+  });
 }
 
 async function setupLocalStream() {
