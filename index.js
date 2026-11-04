@@ -33,7 +33,7 @@ io.sockets.on('connection', socket => {
     }
 
     setupWebRTC(socket);
-    setupUI(socket);
+    setupUISignaling(socket);
 
     // 'disconnecting' fires before rooms are cleared, so the room still includes this socket here
     socket.on('disconnecting', () => {
@@ -87,7 +87,7 @@ function setupWebRTC(socket) {
     });
 }
 
-function setupUI(socket) {
+function setupUISignaling(socket) {
     // Canvas and stroke handling
     socket.emit('initCanvas', strokes); // Send all previous strokes to the newly connected client
 

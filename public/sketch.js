@@ -23,7 +23,7 @@ let remoteStrokes = [];
 /* Initialize Socket.io, WebRTC, p5 canvas, and UI bindings */
 
 function setup() {
-  setupSocket();
+  setupSocket(); //Sockets used for (1) Signaling WebRTC connections and (2) Canvas stroke communication
   setupCanvas();
   setupUIBindings();
 }
@@ -32,54 +32,59 @@ function setupSocket() {
   //Listen for confirmation of connection
   socket.on('connect', () => console.log(`Connected: ${socket.id}`));
 
-  setupRoomSocketHandlers();
-  setupUISocketHandlers();
+  setupStreamSignaling();
+  setupUISignaling();
 }
 
-function setupRoomSocketHandlers() {
+function setupStreamSignaling() {
+  // Handle socket.io room events, used to establish WebRTC connections
+
   const setHeader = (text) => select('#roomT').html(text);
 
   // Client notified that they are hosting a room
   socket.on('roomHosted', roomCode => {
-    setHeader('HOST, Room Code: ' + roomCode);
-    becomeHost();
+    setHeader('HOST');
+    becomeHost(); // Set up host-specific WebRTC handling
   });
 
   // Client notified that they have joined a room as a guest
   socket.on('roomJoined', roomCode => {
-    setHeader('GUEST, Room Code: ' + roomCode);
-    becomeGuest();
+    setHeader('GUEST');
+    becomeGuest(); // Set up guest-specific WebRTC handling
   });
 }
 
 function becomeHost() {
   //Host sets up their local video stream when hosting a room
-  const streamReady =setupLocalStream(); 
+  //The const saves the promise returned by setupLocalStream() so we can await it later
+  const streamReady = setupLocalStream(); 
 
-  // Host notified that a new guest has joined the room
+  // Prepare to handle a new guest joining the room
   socket.on('guestJoined', async guestId => {
     console.log(`A new guest has joined: ${guestId}`);
 
-    // Host creates a new peer connection (persisted in pcs) and adds stream for the guest
+    // Host creates a new peer connection (persisted in pcs) and adds stream for the guest - WebRTC
     const pc = createPeerConnection(guestId);
     
-    await streamReady;
+    await streamReady; // Wait for local stream to be ready before adding tracks - WebRTC
     if (localStream) {
       localStream.getTracks().forEach(track => pc.addTrack(track, localStream));
     }
 
-    // Host creates an offer for the guest
-    const offer = await pc.createOffer();
+    // Host creates an offer for the guest - WebRTC
+    // Local description is a representation of the host's end of the connection - WebRTC
+    let offer = await pc.createOffer();
     await pc.setLocalDescription(offer);
 
-    // Host waits for gathering ICE candidates before sending the offer
+    // Wait for gathering ICE (Interactive Connectivity Establishment) candidates before sending the offer - WebRTC
     await waitForIceGathering(pc);
+    offer = pc.localDescription; // Update offer with the final local description after ICE gathering - WebRTC
 
-    // Host sends the offer to the guest via the signaling server
-    socket.emit('hostOffer', {to: guestId, offer: pc.localDescription});
+    // Host offers connection to the guest via the signaling server - WebRTC
+    socket.emit('hostOffer', {to: guestId, offer});
   });
 
-  // Host receives an acceptance from a guest
+  // Prepare to handle guest answers to offer - WebRTC
   socket.on('guestAnswer', async ({from, answer}) => {
     const pc = pcs[from]; //Retrieve the right pc for a given guest from persisted pcs
     if (pc) {
@@ -89,39 +94,42 @@ function becomeHost() {
 }
 
 function becomeGuest() {
-  // Guest receives an offer from the host
+  // Prepare to handle host offer to connect - WebRTC
   socket.on('hostOffer', async ({from, offer}) => {
     // Guest creates a new peer connection for the host and sets up event handlers
     const pc = createPeerConnection(from);
-    await pc.setRemoteDescription(offer);
+    await pc.setRemoteDescription(offer); // Remote description is a representation of the host's end of the connection - WebRTC
 
     // Guest creates an answer for the host's offer
-    const answer = await pc.createAnswer();
-    await pc.setLocalDescription(answer);
+    let answer = await pc.createAnswer();
+    await pc.setLocalDescription(answer); // Local description is a representation of the guest's end of the connection - WebRTC
 
-    // Wait for gathering ICE candidates before sending the answer
+    // Wait for gathering ICE (Interactive Connectivity Establishment) candidates before sending the offer - WebRTC
     await waitForIceGathering(pc);
+    answer = pc.localDescription; // Update answer with the final local description after ICE gathering - WebRTC
 
     // Guest sends the answer back to the host via the signaling server
-    socket.emit('guestAnswer', {to: from, answer: pc.localDescription});
+    socket.emit('guestAnswer', {to: from, answer});
   });
 }
 
 // Create a new RTCPeerConnection for a given socket ID (host or guest) and set up event handlers
 function createPeerConnection(remoteSocketId) {
   const pc = new RTCPeerConnection({
-    iceServers: [{ urls: "stun:stun.l.google.com:19302" }]
+    iceServers: [{ urls: "stun:stun.l.google.com:19302" }] // Use Google's public STUN server for ICE candidate gathering - WebRTC
   });
 
+  // Set up event handler for when remote tracks are added to the connection
+  // This event is triggered when the remote peer adds a track to the connection
   pc.ontrack = event => {
     setupRemoteStreamFromEvent(event);
   };
 
-  pcs[remoteSocketId] = pc;
+  pcs[remoteSocketId] = pc; // Persist the peer connection for this remote socket ID
   return pc;
 }
 
-// Wait for ICE gathering to complete for a given RTCPeerConnection
+// Wait for ICE (Interactive Connectivity Establishment) gathering to complete for a given RTCPeerConnection
 function waitForIceGathering(pc) { 
   return new Promise((resolve, reject) => {
     // Resolves immediately if iceGatheringState is already 'complete'
@@ -143,11 +151,14 @@ function waitForIceGathering(pc) {
 }
 
 async function setupLocalStream() {
+  // Use MediaStream API to get access to the user's camera
   localStream = await navigator.mediaDevices.getUserMedia({
     video: true,
     audio: false
   });
   setupVideoSource(localStream);
+
+  //Returns a promise because this function is async and may involve user media permission prompts
 }
 
 function setupRemoteStreamFromEvent(event) {
@@ -155,15 +166,16 @@ function setupRemoteStreamFromEvent(event) {
 }
 
 function setupVideoSource(stream) {
+  // mainVideo represents the primary HTML video element displaying the stream
   if (mainVideo) mainVideo.remove();
-  mainVideo = createVideo([]);
-  mainVideo.elt.srcObject = stream;
-  mainVideo.elt.muted = true;
-  mainVideo.elt.play();
-  mainVideo.hide();
+  mainVideo = createVideo([]); // Create a new p5 video element for the main video stream
+  mainVideo.elt.srcObject = stream; // Attach the media stream to the video element
+  mainVideo.elt.muted = true; // Mute the video element to avoid feedback when playing local stream
+  mainVideo.elt.play(); // Start playing the video stream
+  mainVideo.hide(); // Hide the video element as it will be displayed on the canvas instead of directly in the DOM
 }
 
-function setupUISocketHandlers() {
+function setupUISignaling() {
   // Client-side socket handlers receive updates from the server regarding canvas and drawing events 
   // from other clients
 
@@ -193,8 +205,8 @@ function setupUIBindings() {
   };
 
   bind('#clearCanvas', 'mousePressed', () => {
-    clearCanvas();
-    socket.emit('clearCanvas');
+    clearCanvas(); // Apply locally
+    socket.emit('clearCanvas'); // Apply remotely
   });
 
   bind('#sizeSlider', 'input', el => { tool.size = el.value(); });
@@ -202,7 +214,7 @@ function setupUIBindings() {
   bind('#softB', 'mousePressed', () => { tool.brush = "soft"; });
   bind('#hardB', 'mousePressed', () => { tool.brush = "hard"; });
   bind('#eraseB', 'mousePressed', () => { tool.brush = "eraser"; });
-
+  
   //LLM Usage (Iris): Used Copilot for this `selectAll` formulation to match Tiff's HTML structure
   selectAll('#colorPalette .color-btn[data-color]').forEach(button => {
     button.mousePressed(() => {
@@ -251,18 +263,18 @@ function displayVideo() {
 function mouseDragged() {
   if (!currentStroke) {
     let strokeData = { id: `${socket.id}-${Date.now()}`, ...tool };
-    strokeStart(strokeData);
-    socket.emit('strokeStart', strokeData);
+    strokeStart(strokeData); // Apply locally
+    socket.emit('strokeStart', strokeData); // Apply remotely
   }
 
   let pointData = { id: currentStroke.id, point: { x: mouseX, y: mouseY } };
-  strokePoint(pointData);
-  socket.emit('strokePoint', pointData);
+  strokePoint(pointData); // Apply locally
+  socket.emit('strokePoint', pointData); // Apply remotely
 }
 
 function mouseReleased() {
-  strokeEnd(currentStroke);
-  socket.emit('strokeEnd', currentStroke);
+  strokeEnd(currentStroke); // Apply locally
+  socket.emit('strokeEnd', currentStroke); // Apply remotely
 }
 
 /* Data Handling Functions for Strokes and Canvas */
@@ -277,6 +289,24 @@ function strokePoint(data) {
   // Only update the drawing layer after MouseDragged interactions
   if (!currentStroke) return;
   let s = currentStroke;
+
+  /*  TODO: Interpolate points between previous and current mouse positions for smoother brush strokes
+
+      distance = distance between previous and current
+      spacing = brush diameter × 0.25
+      steps = max(1, ceil(distance / spacing))
+
+      for i from 1 through steps:
+          t = i / steps
+          x = previous.x + (current.x − previous.x) × t
+          y = previous.y + (current.y − previous.y) × t
+          draw your brush circle at (x, y)
+
+      Caveat: Won't match curves, impacts opacity blending for soft brushes
+      Even better: 
+      - Implement a proper curve interpolation algorithm like Catmull-Rom splines to match the actual mouse path more closely.
+      - Add temporary stroke layer for uniform opacity blending and smoother rendering of soft brushes.
+    */
 
   if (currentStroke.brush == "hard") {
     pg.fill(s.color.r, s.color.g, s.color.b, s.color.a);
