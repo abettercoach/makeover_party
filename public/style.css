@@ -1,11 +1,23 @@
 body {
-    background-color: white;
-    font-family: Arial, Helvetica, sans-serif;
+    background-color: #F0DEFF;
+    font-family: "Emilys Candy", serif;
 }
 
 h3 {
     text-align: center;
+    color: #e085c2;
 }
+
+h1 {
+    text-align: center;
+    padding-top: 30px;
+    color: #B31B79;
+}
+
+p {
+    color: #e085c2;
+}
+
 .flex-container {
     display: flex;
     flex-direction: row;
@@ -20,6 +32,7 @@ h3 {
     padding: 20px;
 }
 
+/* buttons */
 #colorPalette {
     display: grid;
     grid-template-columns: repeat(2, 1fr); /* gemini + MD ref */
@@ -31,8 +44,19 @@ h3 {
     display: flex;
     flex-direction: column;
     width: 3em;
-    padding-top: 10px;
-    padding-bottom: 10px;
+    padding-top: 15px;
+    padding-bottom: 15px;
+    gap: 2px;
+}
+
+#brushes img {
+    max-width: 30px;
+    max-height: 30px;
+}
+
+button {
+    border-color: #5e4d57;
+    border-radius: 2px;
 }
 
 .color-btn {
@@ -40,8 +64,32 @@ h3 {
     height: 2em;
 }
 
+#clearCanvas {
+    padding: 5px;
+}
+
 .slider {
     writing-mode: vertical-lr;
     direction: rtl;
-    margin-top: 20px;
 }
+
+.slidecontainer {
+    text-align: center;
+    margin-top: 40px;
+}
+
+/* .slider:hover {
+    background-color: #F0DEFF;
+} */
+
+/* Gemini/ Google */
+input[type="range"] { 
+  accent-color: #B31B79; 
+}
+
+#p5Canvas {
+    border: 1px solid ;
+    border-color: #e085c2;
+}
+
+
