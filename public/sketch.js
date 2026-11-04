@@ -243,6 +243,7 @@ function draw() {
 
 function displayVideo() {
   if (!mainVideo) return;
+  
   // Scale video to fit canvas while maintaining aspect ratio
   let scaleFactor = min(640 / mainVideo.width, 480 / mainVideo.height);
   
@@ -252,9 +253,7 @@ function displayVideo() {
   let left = (640 - w) / 2;
   let top = (480 - h) / 2;
 
-  if (mainVideo) {
-    image(mainVideo, left, top, w, h);
-  }
+  image(mainVideo, left, top, w, h);
 }
 
 function mousePressed() {
