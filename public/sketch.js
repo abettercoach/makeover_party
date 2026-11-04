@@ -16,8 +16,8 @@ let mainVideo; // p5 Video object
 let tool = { brush: "hard", size: 10, color: { r: 0, g: 0, b: 0, a: 255 }}; //Default tool + options
 
 // Stroke data for socket communication
-let currentStroke = null;
-let strokes = {};
+let currentStroke = null; // Local stroke data being drawn
+let strokes = {}; // Store all strokes, including both local and remote, indexed by stroke ID
 
 /* Setup Functions */
 /* Initialize Socket.io, WebRTC, p5 canvas, and UI bindings */
@@ -294,6 +294,7 @@ function strokePoint() {
 function strokeEnd() {
   applyStrokeEnd(currentStroke); // Apply locally
   socket.emit('strokeEnd', currentStroke); // Apply remotely
+
   currentStroke = null;
 }
 
@@ -355,7 +356,6 @@ function applyStrokePoint(data) {
     pg.noErase(); // (Tiff) GEMINI: ALWAYS call noErase() immediately after so subsequent shapes draw normally 
   }
 }
-
 
 function applyStrokeEnd(data) {
   if (strokes[data.id]) {
