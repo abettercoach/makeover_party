@@ -3,12 +3,12 @@ let socket = io();
 
 
 /* Data */
-let isHost = false;
 
 // WebRTC and p5 video capture related variables
 let pcs = {}; // Store multiple peer connections indexed by socket ID
 let pendingCandidates = {}; // Store ICE candidates received before remote description is set
-let localStream;
+
+let localStream; // Local media stream for WebRTC
 
 let pg;  // p5 Graphics Buffer (for erasing)
 let mainVideo; // p5 Video object
@@ -42,21 +42,18 @@ function setupRoomSocketHandlers() {
 
   // Client notified that they are hosting a room
   socket.on('roomHosted', roomCode => {
-    isHost = true;
     setHeader('HOST, Room Code: ' + roomCode);
-
     becomeHost();
   });
 
   // Client notified that they have joined a room as a guest
   socket.on('roomJoined', roomCode => {
-    isHost = false;
     setHeader('GUEST, Room Code: ' + roomCode);
-    
     becomeGuest();
   });
 
-  // Handle incoming ICE candidates from remote peers (both host and guest) - WebRTC signaling
+  // Handle incoming Interactive Connectivity Establishment (ICE) candidates from remote peers (both host and guest) - WebRTC signaling
+  // (Iris) I understand everything else about WebRTC signaling, but not this part.
   socket.on('iceCandidate', async ({from, candidate}) => {
     const pc = pcs[from];
     if (pc && pc.remoteDescription) {
@@ -243,6 +240,7 @@ function draw() {
 }
 
 function displayVideo() {
+  if (!mainVideo) return;
   // Scale video to fit canvas while maintaining aspect ratio
   let scaleFactor = min(640 / mainVideo.width, 480 / mainVideo.height);
   
